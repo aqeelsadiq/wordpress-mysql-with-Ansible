@@ -1,0 +1,85 @@
+---
+- name: Configure WordPress
+  hosts: webservers
+  become: yes
+  vars:
+    db_name: "{{ lookup('env', 'DB_NAME') }}"
+    db_user: "{{ lookup('env', 'DB_USER') }}"
+    db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+    db_host: "{{ lookup('env', 'DB_HOST') }}"
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+
+    - name: Install Apache2
+      apt:
+        name: apache2
+        state: present
+
+    - name: Install PHP and required modules
+      apt:
+        name:
+          - php
+          - libapache2-mod-php
+          - php-mysql
+        state: present
+
+    - name: Enable Apache rewrite module
+      command: a2enmod rewrite
+      notify: Restart Apache
+
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.tar.gz
+        dest: /tmp/latest.tar.gz
+
+    - name: Extract WordPress
+      ansible.builtin.unarchive:
+        src: /tmp/latest.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Move WordPress files
+      shell: cp -r /tmp/wordpress/* /var/www/html/
+
+    - name: Set ownership for WordPress files
+      file:
+        path: /var/www/html/
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Set permissions for WordPress files
+      file:
+        path: /var/www/html/
+        mode: '0755'
+        recurse: yes
+
+    - name: Copy sample config to wp-config.php
+      copy:
+        src: /var/www/html/wp-config-sample.php
+        dest: /var/www/html/wp-config.php
+        remote_src: yes
+
+    - name: Update wp-config.php with database information
+      lineinfile:
+        path: /var/www/html/wp-config.php
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: 'database_name_here', line: "define('DB_NAME', '{{ db_name }}');" }
+        - { regexp: 'username_here', line: "define('DB_USER', '{{ db_user }}');" }
+        - { regexp: 'password_here', line: "define('DB_PASSWORD', '{{ db_password }}');" }
+        - { regexp: 'localhost', line: "define('DB_HOST', '{{ db_host }}');" }
+
+    - name: Remove index.html
+      file:
+        path: /var/www/html/index.html
+        state: absent
+
+  handlers:
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted

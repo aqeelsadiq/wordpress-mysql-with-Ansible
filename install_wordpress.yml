@@ -1,0 +1,71 @@
+---
+- name: Install Apache2 and set up WordPress
+  hosts: webservers
+  become: yes
+
+  tasks:
+    - name: Update package cache and upgrade packages
+      apt:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install Apache2
+      apt:
+        name: apache2
+        state: present
+
+    - name: Start and enable Apache2
+      service:
+        name: apache2
+        state: started
+        enabled: yes
+
+    - name: Install necessary packages
+      apt:
+        name:
+          - wget
+          - unzip
+          - php
+          - libapache2-mod-php
+          - php-mysql
+        state: present
+        update_cache: yes
+
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.zip
+        dest: /tmp/latest.zip
+        mode: '0644'
+
+    - name: Unzip WordPress
+      unarchive:
+        src: /tmp/latest.zip
+        dest: /var/www/html/
+        remote_src: yes
+
+    - name: Copy WordPress files
+      shell: cp -r /var/www/html/wordpress/* /var/www/html/
+
+    - name: Change directory and remove index.html
+      shell: |
+        cd /var/www/html/
+        rm -rf index.html
+
+    - name: Set ownership of /var/www/html
+      file:
+        path: /var/www/html
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Set permissions for /var/www/html
+      file:
+        path: /var/www/html
+        mode: '0755'
+        recurse: yes
+
+    - name: Restart Apache2
+      service:
+        name: apache2
+        state: restarted

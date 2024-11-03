@@ -1,0 +1,69 @@
+---
+- name: mysql playbook
+  hosts: dbserver
+  become: yes
+  vars:
+    mysql_root_password: "aqeel@123"
+  tasks:
+    - name: Update package
+      apt:
+        update_cache: yes
+
+    - name: Install mysqll server
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Install mysql client
+      apt:
+        name: mysql-client
+        state: present
+
+    - name: Install MySQL Python dependencies
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Start mysql
+      systemd:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Set root user password and update authentication method
+      mysql_user:
+        name: root
+        host: localhost
+        password: "{{ mysql_root_password }}"
+        check_implicit_admin: yes
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        plugin: mysql_native_password
+
+    - name: Create mysql database
+      mysql_db:
+        name: mydb
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create mysql user with privileges
+      mysql_user:
+        name: aqeel
+        host: "%"
+        password: "aqeel@123"
+        priv: "*.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Comment the bind-address
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: '^bind-address'
+        line: '#bind-address'
+        state: present
+
+    - name: Restart mysql
+      systemd:
+        name: mysql
+        state: restarted

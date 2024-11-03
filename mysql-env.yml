@@ -1,0 +1,81 @@
+---
+- name: Configure MySQL
+  hosts: dbserver
+  become: yes
+  vars:
+    db_name: "{{ lookup('env', 'DB_NAME') }}"
+    db_user: "{{ lookup('env', 'DB_USER') }}"
+    db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+    db_host: "{{ lookup('env', 'DB_HOST') }}"
+    mysql_root_password: "{{ lookup('env', 'MYSQL_ROOT_PASSWORD') }}"
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+
+    - name: Install MySQL server
+      apt:
+        name: mysql-server
+        state: present
+
+    - name: Install MySQL client
+      apt:
+        name: mysql-client
+        state: present
+
+    - name: Install MySQL Python dependencies
+      apt:
+        name: python3-pymysql
+        state: present
+
+    - name: Start MySQL
+      systemd:
+        name: mysql
+        state: started
+        enabled: yes
+
+    - name: Reset root password due to expiration (direct command)
+      command: >
+        mysql --connect-expired-password -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';"
+      ignore_errors: yes
+      register: root_password_reset
+
+    - name: Ensure root user authentication method is mysql_native_password
+      mysql_user:
+        name: root
+        host: localhost
+        password: "{{ mysql_root_password }}"
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        plugin: mysql_native_password
+      when: root_password_reset is succeeded
+
+    - name: Create MySQL database
+      mysql_db:
+        name: "{{ db_name }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create MySQL user with privileges
+      mysql_user:
+        name: "{{ db_user }}"
+        host: "%"
+        password: "{{ db_password }}"
+        priv: "*.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Comment the bind-address to allow external connections
+      lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: '^bind-address'
+        line: '#bind-address'
+        state: present
+
+    - name: Restart MySQL
+      systemd:
+        name: mysql
+        state: restarted
